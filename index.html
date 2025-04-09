@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="he">
+<head>
+  <meta charset="UTF-8">
+  <title>מערכת משלוחים</title>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <style>
+    /* עיצוב כללי אלגנטי ומודרני */
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      direction: rtl;
+      text-align: right;
+      margin: 0;
+      padding: 0;
+      background: #f5f7fa;
+      color: #333;
+    }
+
+    header {
+      background: linear-gradient(to right, #3a7bd5, #00d2ff);
+      padding: 20px;
+      color: white;
+      text-align: center;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 2rem;
+    }
+
+    main {
+      max-width: 900px;
+      margin: 30px auto;
+      padding: 20px;
+      background: white;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+      border-radius: 12px;
+    }
+
+    .location {
+      border: 1px solid #ddd;
+      padding: 15px;
+      margin-bottom: 15px;
+      border-radius: 8px;
+      background: #fafafa;
+    }
+
+    label {
+      display: block;
+      margin-top: 8px;
+      font-weight: bold;
+    }
+
+    input[readonly] {
+      width: 100%;
+      padding: 6px;
+      background: #eef2f5;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+
+    button {
+      margin-top: 10px;
+      padding: 8px 12px;
+      background: #3a7bd5;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: background 0.3s ease;
+    }
+
+    button:hover {
+      background: #2c5faa;
+    }
+
+    #mapContainer {
+      margin-top: 30px;
+      text-align: center;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+      justify-content: center;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>מערכת משלוחים חכמה</h1>
+  </header>
+
+  <main>
+    <div id="locations"></div>
+    <div class="btn-group">
+      <button id="generate">יצירת 4 מיקומים רנדומליים</button>
+      <button id="showMap">הצג מפה</button>
+    </div>
+    <div class="map" id="mapContainer"></div>
+  </main>
+
+<script>
+const jce = { lat: 31.794651, lon: 35.241262 };
+const apiKey = "9a40e249966340ae81c220da3fa1e205";
+
+$(document).ready(function() {
+  function createLocation(index, lat, lon) {
+    const loc = $(
+      `<div class="location" data-index="${index}">
+        <h3>מקום ${index + 1}</h3>
+        <label>רוחב:</label>
+        <input type="text" class="lat" value="${lat.toFixed(4)}" readonly>
+        <label>אורך:</label>
+        <input type="text" class="lon" value="${lon.toFixed(4)}" readonly>
+        <button class="placeBtn">שם המקום</button>
+        <span class="place"></span><br>
+        <button class="weatherBtn">מזג אוויר</button>
+        <span class="weather"></span>
+      </div>`
+    );
+    $("#locations").append(loc);
+  }
+
+  function getRandomLocation(lat, lon, radiusKm) {
+    const radiusDeg = radiusKm / 111;
+    const u = Math.random(), v = Math.random();
+    const w = radiusDeg * Math.sqrt(u);
+    const t = 2 * Math.PI * v;
+    return {
+      lat: lat + w * Math.cos(t),
+      lon: lon + w * Math.sin(t) / Math.cos(lat * Math.PI / 180)
+    };
+  }
+
+  createLocation(0, jce.lat, jce.lon);
+
+  $("#generate").click(() => {
+    $("#locations").html("");
+    createLocation(0, jce.lat, jce.lon);
+    for (let i = 1; i < 5; i++) {
+      const rand = getRandomLocation(jce.lat, jce.lon, 100);
+      createLocation(i, rand.lat, rand.lon);
+    }
+  });
+
+  $(document).on("click", ".placeBtn", function() {
+    const parent = $(this).closest(".location");
+    const lat = parent.find(".lat").val();
+    const lon = parent.find(".lon").val();
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&accept-language=he&lat=${lat}&lon=${lon}`;
+    fetch(url)
+      .then(res => res.json())
+      .then(data => parent.find(".place").text(data.display_name || "נסה שנית"))
+      .catch(() => parent.find(".place").text("נסה שנית"));
+  });
+
+  $(document).on("click", ".weatherBtn", function() {
+    const parent = $(this).closest(".location");
+    const lat = parent.find(".lat").val();
+    const lon = parent.find(".lon").val();
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`;
+    fetch(url)
+      .then(res => res.json())
+      .then(data => {
+        if (data.current_weather) {
+          const w = data.current_weather;
+          parent.find(".weather").text(`טמפ': ${w.temperature}°C, רוח: ${w.windspeed} km/h`);
+        } else {
+          parent.find(".weather").text("לא נמצא מידע");
+        }
+      })
+      .catch(() => parent.find(".weather").text("שגיאה"));
+  });
+
+  $("#showMap").click(() => {
+    let markers = [];
+    let locations = [];
+
+    $(".location").each((i, el) => {
+      const lat = parseFloat($(el).find(".lat").val());
+      const lon = parseFloat($(el).find(".lon").val());
+      locations.push({ lat, lon });
+    });
+
+    markers.push(`lonlat:${locations[0].lon},${locations[0].lat};type:awesome;text:1;color:red;icon:college`);
+
+    for (let i = 1; i < locations.length; i++) {
+      markers.push(`lonlat:${locations[i].lon},${locations[i].lat};type:material;text:${i + 1}`);
+    }
+
+    let minLat = Math.min(...locations.map(l => l.lat));
+    let maxLat = Math.max(...locations.map(l => l.lat));
+    let minLon = Math.min(...locations.map(l => l.lon));
+    let maxLon = Math.max(...locations.map(l => l.lon));
+
+    const margin = 0.05;
+    minLat -= margin; maxLat += margin;
+    minLon -= margin; maxLon += margin;
+
+    const bbox = `${minLon},${minLat},${maxLon},${maxLat}`;
+
+    const url = `https://maps.geoapify.com/v1/staticmap?style=osm-bright&width=600&height=400&bbox=${bbox}&marker=${markers.join('|')}&apiKey=${apiKey}`;
+
+    console.log("MAP URL:", url);
+
+    $("#mapContainer").html(`<img src="${url}" width="600" height="400">`);
+  });
+});
+</script>
+
+</body>
+</html>
